@@ -228,7 +228,9 @@ namespace SynthLib2Parser {
     {
         const string& fname = TheTerm->GetFunName();
 	    if (fname == "=" || fname == "<" || fname == "<="
-                || fname == ">" || fname == ">=" || fname == "!="){
+                || fname == ">" || fname == ">=" || fname == "!="
+		|| fname == "+" || fname == "-" || fname == "*" || fname == "/"
+ 		){
             auto args = TheTerm->GetArgs();
 
             if(args.size() != 2){

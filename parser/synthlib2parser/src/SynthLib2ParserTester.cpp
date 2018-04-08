@@ -188,6 +188,7 @@ bool cond_match(FunTerm* A, FunTerm* B, bool try_flip) {
 }
 
 
+
 std::vector<FunTerm*> extract(FunTerm* f) {
   const std::string& fname = f->GetFunName();
 
@@ -206,6 +207,81 @@ std::vector<FunTerm*> extract(FunTerm* f) {
   }
 
   return res;
+}
+
+
+bool is_update_var(Term* var) {
+  std::ostringstream oss;
+  oss << *var;
+  std::string var_name = oss.str();
+  if( *(var_name.rbegin()) == '!' ) {
+    return true;
+  }
+  return false;
+}
+
+bool cond_has_update(FunTerm* f) {
+  const std::string& name = f->GetFunName();
+  if(name == ">" || name == "<" || name == "<=" || name == ">=" || name == "!=") {
+    for(auto x : f->GetArgs()) {
+
+      auto x_type = dynamic_cast<FunTerm*>(x);
+      if(x_type != nullptr) {
+	if( cond_has_update(x_type) ) {
+	  return true;
+	}
+      }
+      else {
+	if( is_update_var(x) ) {
+	  return true;
+	}
+      }
+    }
+  }
+  else if (name == "+" || name == "-" || name == "*" || name == "/") {
+    for(auto x : f->GetArgs()) {
+      if( is_update_var(x) ) {
+	return true;
+      }
+    }
+  }
+  else {
+    std::cout << __FILE__ << ":" << __LINE__
+	      << "this is not really a condition or its operand: " << name << std::endl;
+    return false;
+  }
+
+  return false;
+}
+
+void extract_conds (FunTerm* f, std::vector<FunTerm*>& cond) {
+
+  const std::string& fname = f->GetFunName();
+  if(fname != "and" && fname != "or") {
+    return;
+  }
+  
+  std::vector<FunTerm*> terms = extract(f);
+  for (auto* t : terms) {
+    const string& name = t->GetFunName();
+    auto args = t->GetArgs();
+    if(name == ">" || name == "<" || name == "<=" || name == ">=" || name == "!=") {
+
+      // std::cout << " compare operations ... " << std::endl;
+      cond.push_back(t);
+    }
+    else if(name == "=") {
+      std::ostringstream oss;
+      oss << *(args[0]);
+      std::string var_name = oss.str();
+      if( *(var_name.rbegin()) == '!' ) {
+	// this is an assignment
+      } else {
+	cond.push_back(t);
+      }
+    }
+  }
+  
 }
 
 void extract_all(FunTerm* f,
@@ -230,11 +306,7 @@ void extract_all(FunTerm* f,
       // std::cout << "arg[0] : " << *(args[0]) << std::endl; 
       // std::cout << "arg[1] : " << *(args[1]) << std::endl;
 
-      std::ostringstream oss;
-      oss << *(args[0]);
-      std::string var_name = oss.str();
-      int len  = var_name.length();
-      if(var_name[len-1] == '!') {
+      if( is_update_var(args[0]) ) {
 	assgn.push_back(t);
       } else {
 	cond.push_back(t);
@@ -297,15 +369,13 @@ FunTerm* simplify_or(FunTerm* f) {
   
   std::vector<FunTerm*> conds_left;
   std::vector<FunTerm*> conds_right;
-  std::vector<FunTerm*> tmp;
-  
 
   // std::cout << "will extract from left/right" << std::endl;
   
-  extract_all(left, conds_left, tmp, tmp);
+  extract_conds(left, conds_left);
   // std::cout << "left: " << conds_left.size() << std::endl;
 
-  extract_all(right, conds_right, tmp, tmp);
+  extract_conds(right, conds_right);
 
   // std::cout << "right: " << conds_right.size() << std::endl;
 
@@ -319,7 +389,7 @@ FunTerm* simplify_or(FunTerm* f) {
     }
   }
 
-  std::cout << "common conditions: " << m.size() << std::endl;
+  //std::cout << "common conditions: " << m.size() << std::endl;
 
   for(auto x : m) {
     left = remove_sub(left, x);
@@ -343,8 +413,7 @@ std::vector<FunTerm*> detect_loop_condition(FunTerm* loop, FunTerm* post) {
   //  post-f (or p ...)
 
   std::vector<FunTerm*> cond_loop;
-  std::vector<FunTerm*> tmp;
-  extract_all(loop, cond_loop, tmp, tmp);
+  extract_conds(loop, cond_loop);
 
   /*
   std::set<std::string> cond_strs;
@@ -402,8 +471,6 @@ bool is_havoc(FunTerm* f) {
   std::vector<FuncTerm*> cond1
   std::vector<FuncTerm*> dontcare;
 
-  extract_all( dynamic_cast<FuncTerm*>( args[0] ), cond0, dontcare, dontcare);
-  extract_all( dynamic_cast<FuncTerm*>( args[1] ), cond1, dontcare, dontcare);
   */
 
   return true;
@@ -447,66 +514,124 @@ std::string handle_pre(FunTerm* f) {
 }
 
 std::string handle_have(FunTerm*);
-std::string handle_body(FunTerm*);
-std::string handle_loop(FunTerm*);
+std::string handle_body_and(FunTerm*, const std::string);
+std::string handle_body_or(FunTerm*, const std::string);
 
-std::string handle_havoc (FunTerm* f) {
-  return "havoc";
+std::string handle_body_or (FunTerm* f, const std::string indent) {
+  if(f->GetFunName() != "or") {
+    throw ("wrong parameter to handle_body_or: " + f->GetFunName()); 
+  } 
 
-}
-std::string handle_body (FunTerm* f) {
-  return "body";
-}
-
-std::string handle_loop(FunTerm* loop) {
-  std::ostringstream os;
-
-  // check if the very first is havoc or not
-  if( loop->GetFunName() == "or" ) {
-    os << "while (*) {\n";
-    
-
-
-    os << "\n}\n";
+  auto args = f->GetArgs();
+  if(args.size() != 2) {
+    throw "not two args in or";
   }
 
+  std::ostringstream oss;
+  oss << indent << "if (*) {\n";
+  oss << handle_body_and( dynamic_cast<FunTerm*> (args[0]), indent + "  ");
+  oss << indent << "} else {\n";
+  oss << handle_body_and( dynamic_cast<FunTerm*> (args[1]), indent + "  ");
+  oss << indent << "}\n";
+
+  return oss.str();
+}
+std::string handle_body_and (FunTerm* f, const std::string indent) {
+
+  if(f->GetFunName() != "and") {
+    throw ("wrong parameter to handle_body_and: " + f->GetFunName()); 
+  } 
+  
+  std::ostringstream os;
+  
   std::vector<FunTerm*> cond;
   std::vector<FunTerm*> assgn;
   std::vector<FunTerm*> havoc; // potential havoc
-  
 
-  if(cond.size() > 1) {
-    std::cout << "Warn: " << cond.size() << " conditions!" << std::endl;
-    for(auto x : cond) std::cout << *x << " | ";
-    std::cout << std::endl;
+  extract_all(f, cond, assgn, havoc);
+
+  // order the conds / assgn / havoc
+    
+  bool has_update = false;
+  for(auto c : cond) {
+    if( cond_has_update(c) ) {
+      has_update = true;
+    }
   }
 
-  // process conditions
-  if (cond.size() == 1) {
-      os << "while( " <<  *(cond[0]) << " ) {\n" ;
+  if(has_update) {
+    std::cout << __FILE__ << ":" << __LINE__ << " "
+	      << "ERROR: we currently only handle cond without update correctly.\n";
+    throw "cond_has_update";
+  }
+
+  // assume condition has no update, thus can be placed before all assignments
+  for(auto c : cond) {
+    os << indent << "if ( " << (*c) << " )\n"; 
+  }
+  os << indent  << "{\n";
+
+  // dump assignments (we might need to order the sequencee)
+  for(auto a : assgn) {
+    os << indent << (*a) << "\n";
+  }
+
+  // handle or recursively
+  for(auto h : havoc) {
+    os << handle_body_or(h, indent + "  ") << "\n";
+  }
+
+  os << indent << "}\n";
+
+  return os.str();
+}
+
+std::vector<FunTerm*> decide_order(FunTerm* loop) {
+  return {};
+}
+
+std::string handle_loop(FunTerm* loop, std::vector<FunTerm*> conds) {
+
+  std::ostringstream os;
+  os << "while (";
+  
+  if(conds.size() > 0) {
+    if(conds.size() == 1) {
+      os << *(conds[0]);      
+    }
+    else {
+      std::cout << __FILE__ << ":" << __LINE__ << " "
+		<< " currently, we only consider a single loop condition: "
+		<< conds.size() << std::endl;
+    }
   }
   else {
-    os << "\n_TODO_conds\n";
+    os << "unknown()";
   }
 
-  // process assignments
-  for(auto* a : assgn) {
-    os << *a << "\n";
+  os << ") {\n";
+
+
+  const std::string& fname = loop->GetFunName();
+  auto args = loop->GetArgs();
+  
+  // check if the very first is havoc or not
+  if( fname == "or" ) {
+    os << handle_body_or(loop, "  ");
+  }
+  else if(fname == "and") {
+    os << handle_body_and(loop, "  ");
+  }
+  else {
+    std::cout << __FILE__ << ":" << __LINE__ << " "
+	      << "ERROR: loop body should be enclosed in or/and\n";
+    throw "loop body should be inside of or/and";
   }
 
-  // process havoc
-  if(havoc.size() > 1) {
-    std::cout << "Warn: " << cond.size() << " havocs!" << std::endl;
-    for(auto x : cond) std::cout << *x << " | ";
-    std::cout << std::endl;
-  }
+  os << "\n}\n";
 
-  for(auto* h : havoc) {
-    os << handle_loop(h);
-  }
-
-  os << "}\n";
   return os.str();
+
 }
 
 std::string handle_post(FunTerm* post) {
@@ -585,43 +710,42 @@ int main(int argc, char* argv[])
   // flatten
   //pre = flatten(pre);
 
-
-
   // std::cout << "loop: \n" << *loop << std::endl;
-
   loop = reduce_not(loop);
   loop = flatten(loop);
 
   // std::cout << "after reduce_not, flatten:\n" << *loop << std::endl;
 
-  
   if(loop->GetFunName() == "or") {
     loop = simplify_or( loop );
     // std::cout << "after simplify_or:\n"
     // << *loop << std::endl;
   }
 
-
-
   //std::cout <<"before reducing: " << *post << std::endl;
   //FunTerm* p = reduce_not(post);
   //std::cout <<"after reducing: " << *p << std::endl;  
   FunTerm* post_r = reduce_not(post);
-
-
   auto res = detect_loop_condition(loop, post_r);
 
-  if(expected && res.size() == 0) {
-
-    if(loop->GetFunName() == "or") {
-      std::cout << "expected,but failed to consider (or) in loop. " << std::endl;
-    }
-    else {
-      std::cout << "expected,but failed due to others. " << std::endl;
-    }
-    
+  for(auto lc : res) {
+    loop = remove_sub(loop, lc);
+    post_r = remove_sub(post_r, lc);
   }
+  
+  // if(expected && res.size() == 0) {
+  //   if(loop->GetFunName() == "or") {
+  //     std::cout << "expected,but failed to consider (or) in loop. " << std::endl;
+  //   }
+  //   else {
+  //     std::cout << "expected,but failed due to others. " << std::endl;
+  //   }    
+  // }
 
+
+  auto r = handle_loop(loop, res);
+  std::cout << r << std::endl;
+  
   //handle_post( post );
   
   // cout << (*Parser->GetProgram()) << endl;
