@@ -226,12 +226,33 @@ namespace SynthLib2Parser {
 
     void PrintVisitor::VisitFunTerm(const FunTerm* TheTerm)
     {
+        const string& fname = TheTerm->GetFunName();
+	    if (fname == "=" || fname == "<" || fname == "<="
+                || fname == ">" || fname == ">=" || fname == "!="){
+            auto args = TheTerm->GetArgs();
+
+            if(args.size() != 2){
+                std::cout << __FILE__ << ":" << __LINE__ 
+                    << "ERROR: #args is not 2, which actually is " 
+                    << args.size() << std::endl;
+            }
+            else {
+                Out<<"(";
+                args[0]->Accept(this);
+                Out << " " << fname  << " ";
+                args[1]->Accept(this);
+                Out<<")";
+            }
+	    }
+        else {
+
         Out << "(" << TheTerm->GetFunName();
         for(auto const& Arg : TheTerm->GetArgs()) {
             Out << " ";
             Arg->Accept(this);
         }
         Out << ")";
+        }
     }
 
     void PrintVisitor::VisitLiteralTerm(const LiteralTerm* TheTerm)
@@ -269,7 +290,8 @@ namespace SynthLib2Parser {
 
     void PrintVisitor::VisitFunGTerm(const FunGTerm* TheTerm)
     {
-        Out << "(" << TheTerm->GetName();
+
+        Out << "(GTerm " << TheTerm->GetName();
         for(auto const& Arg : TheTerm->GetArgs()) {
             Out << " ";
             Arg->Accept(this);
