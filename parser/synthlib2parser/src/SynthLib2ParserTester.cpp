@@ -209,11 +209,45 @@ std::vector<FunTerm*> extract(FunTerm* f) {
   return res;
 }
 
+std::string term_to_str(Term* t) {
+  std::ostringstream oss;
+  oss << *t;
+  return oss.str();
+}
+
+bool is_self_assign(FunTerm* as) {
+  if(as->GetFunName() != "="){
+    return false;
+  }
+  auto args = as->GetArgs();
+  std::string x_prime = term_to_str( args[0] );
+
+  if( *(x_prime.rbegin()) == '!' ) {
+    std::ostringstream oss2;
+    oss2 << *args[1];
+    std::string x = oss2.str();
+
+    if (x_prime == (x + "!")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool is_and_or(Term* var) {
+  FunTerm* f = dynamic_cast<FunTerm*>(var);
+  if(f != nullptr) {
+    std::string name = f->GetFunName();
+    if(name == "or" || name == "and") {
+      return true;
+    }
+  }
+  return false;
+}
 
 bool is_update_var(Term* var) {
-  std::ostringstream oss;
-  oss << *var;
-  std::string var_name = oss.str();
+  std::string var_name = term_to_str( var );
   if( *(var_name.rbegin()) == '!' ) {
     return true;
   }
@@ -271,10 +305,7 @@ void extract_conds (FunTerm* f, std::vector<FunTerm*>& cond) {
       cond.push_back(t);
     }
     else if(name == "=") {
-      std::ostringstream oss;
-      oss << *(args[0]);
-      std::string var_name = oss.str();
-      if( *(var_name.rbegin()) == '!' ) {
+      if(is_update_var( args[0] )) {
 	// this is an assignment
       } else {
 	cond.push_back(t);
@@ -573,6 +604,9 @@ std::string handle_body_and (FunTerm* f, const std::string indent) {
 
   // dump assignments (we might need to order the sequencee)
   for(auto a : assgn) {
+    if( is_self_assign( dynamic_cast<FunTerm*>(a) ) ) {
+      continue;
+    }
     os << indent << (*a) << "\n";
   }
 
@@ -586,9 +620,6 @@ std::string handle_body_and (FunTerm* f, const std::string indent) {
   return os.str();
 }
 
-std::vector<FunTerm*> decide_order(FunTerm* loop) {
-  return {};
-}
 
 std::string handle_loop(FunTerm* loop, std::vector<FunTerm*> conds) {
 
@@ -634,18 +665,98 @@ std::string handle_loop(FunTerm* loop, std::vector<FunTerm*> conds) {
 
 }
 
-std::string handle_post(FunTerm* post) {
 
-  std::vector<FunTerm*> cond;
-  std::vector<FunTerm*> assgn;
-  std::vector<FunTerm*> havoc; // potential havoc
+std::vector<std::string> handle_post(FunTerm* post);
 
-  //extract_all(post, cond, assgn, havoc);
+std::vector<std::string> A_implies_B(Term* A, Term* B) {
+  std::vector<std::string> ps;
+
+  std::string cond0 = "";
+  if( is_and_or(A)) {
+    // must be and
+    FunTerm* cs = dynamic_cast<FunTerm*>( A );
+    for(auto x : cs->GetArgs()) {
+      cond0 += "if ( " + term_to_str(x) + " )\n";
+    }
+  }
+  else {
+    cond0 = "if ( " + term_to_str( A ) + " )\n";
+  }
+
+  if( is_and_or(B) ) {
+    FunTerm* as = dynamic_cast<FunTerm*> (B);
+    for(auto x : handle_post(as)) {
+      ps.push_back( cond0 + x );
+    }
+  }
+  else {
+    std::string cond1 = term_to_str(B);
+    ps.push_back( cond0 + "assert( " +cond1 + " );\n" );
+  }
+
+  return ps;
+}
+
+std::vector<std::string> handle_post(FunTerm* post) {
+
+  const std::string& fname = post->GetFunName();
+  auto args = post->GetArgs();
+
+  // std::cout << "post: " << *post << std::endl;
+  // for(auto x : args) {
+  //     FunTerm* n_x = dynamic_cast<FunTerm*>(x); 
+  //     std::string name = n_x -> GetFunName();
+  //     if(name == "or" || name == "and") {
+  // 	std::cout << __FILE__ << ":" << __LINE__
+  // 		  << "handle_post, complicated nested condition " << *x << std::endl;
+  //     }
+  // }
 
   
-  
-  
-  return "post";
+  std::vector<std::string> ps;
+  if( fname == "and" ) {
+    // split into independent ones
+    for(auto x : args) {
+      if( is_and_or(x) ){
+	for(auto y : handle_post( dynamic_cast<FunTerm*>(x) )) {
+	  ps.push_back(y);
+	}
+	continue;
+      }
+      
+      std::string cond = term_to_str( x );
+      ps.push_back( "assert( " +  cond + " );" );      
+    }
+  }
+  else if( fname == "or" ) {
+
+    if(args.size() == 1) {
+      if( is_and_or(args[0]) ){
+	for(auto y : handle_post( dynamic_cast<FunTerm*>( args[0] ) )) {
+	  ps.push_back(y);
+	}
+      }
+      else {
+	ps.push_back( "assert( " +  term_to_str(args[0]) + " );" );
+      }
+    }
+    else if(args.size() == 2) {
+      for( auto x : A_implies_B(args[0], args[1]) ) {
+	ps.push_back(x);
+      }
+
+      for( auto x : A_implies_B(args[1], args[0]) ) {
+	ps.push_back(x);
+      }
+    }
+    else {
+      std::cout << "handle_post, or args: " << post->GetArgs().size() << std::endl;
+      throw "handle_post, or args is more than 2"; 
+    }
+  }
+
+  return ps;
+
 }
 
 
@@ -664,11 +775,16 @@ int main(int argc, char* argv[])
   FunTerm* loop;
   FunTerm* post;
 
+  ArgList vars;
+  
   auto TheProgram = Parser->GetProgram();
   for (auto cmd : TheProgram->GetCmds()) {
     if (cmd->GetKind() == CMD_FUNDEF) {
       FunDefCmd* fdc = static_cast<FunDefCmd*>(cmd);
 
+      for(auto arg_sort : fdc->GetArgs()) {
+	vars.push_back(arg_sort);
+      }
 
       const string fname = fdc->GetFunName();
       FunTerm* tm = dynamic_cast<FunTerm*> (fdc->GetTerm());
@@ -689,6 +805,7 @@ int main(int argc, char* argv[])
     }
   }
 
+ 
 
   bool expected = false;
   if(post->GetFunName() == "or" || post->GetFunName() == "not") {
@@ -724,8 +841,10 @@ int main(int argc, char* argv[])
 
   //std::cout <<"before reducing: " << *post << std::endl;
   //FunTerm* p = reduce_not(post);
-  //std::cout <<"after reducing: " << *p << std::endl;  
+  //std::cout <<"after reducing: " << *p << std::endl;
+  
   FunTerm* post_r = reduce_not(post);
+  
   auto res = detect_loop_condition(loop, post_r);
 
   for(auto lc : res) {
@@ -743,11 +862,15 @@ int main(int argc, char* argv[])
   // }
 
 
-  auto r = handle_loop(loop, res);
-  std::cout << r << std::endl;
-  
-  //handle_post( post );
-  
+  //auto r = handle_loop(loop, res);
+  //std::cout << r << std::endl;
+
+  FunTerm* post_f = flatten(post_r);
+  auto ps = handle_post( post_f );
+
+  for(auto x : ps) {
+    std::cout << "[assert]: " << x << std::endl;
+  }
   // cout << (*Parser->GetProgram()) << endl;
 
   delete Parser;
