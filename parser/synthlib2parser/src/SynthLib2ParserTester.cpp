@@ -805,6 +805,21 @@ int main(int argc, char* argv[])
     }
   }
 
+
+  std::cout << "vars:" << std::endl;
+
+  std::set<std::string> var_names;
+  for(auto x : vars) {
+    std::string name = x->GetName();
+    if( *(name.rbegin()) == '!') {
+      continue;
+    }
+    var_names.insert(name);
+  }
+
+  for(auto name : var_names) {
+    std::cout << "int " << name << ";\n";
+  }
  
 
   bool expected = false;
@@ -868,9 +883,9 @@ int main(int argc, char* argv[])
   FunTerm* post_f = flatten(post_r);
   auto ps = handle_post( post_f );
 
-  for(auto x : ps) {
-    std::cout << "[assert]: " << x << std::endl;
-  }
+  //for(auto x : ps) {
+  //  std::cout << "[assert]: " << x << std::endl;
+  //}
   // cout << (*Parser->GetProgram()) << endl;
 
   delete Parser;
