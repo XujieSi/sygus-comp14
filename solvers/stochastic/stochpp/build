@@ -9,12 +9,19 @@ PARSERINCDIRS="-Iparser/src/include/";
 PARSERLIBDEB="parser/lib/debug/*.a";
 PARSERLIBOPT="parser/lib/opt/*.a";
 
-INCDIRS="-Iinclude/ -I/home1/r/rmukund/include/";
-LDDIRSDEB="-L/home1/r/rmukund/lib/";
-LDDIRSOPT="-L/home1/r/rmukund/lib/";
+#INCDIRS="-Iinclude/ -I/home1/r/rmukund/include/";
+#LDDIRSDEB="-L/home1/r/rmukund/lib/";
+#LDDIRSOPT="-L/home1/r/rmukund/lib/";
 
-clang++ $CXXFLAGS $INCDIRS $LDDIRSDEB $LDFLAGS $PARSERINCDIRS main.cpp $PARSERLIBDEB && \
-echo "Clang done. Proceeding with GCC build." && \
-g++ $CXXFLAGS $OPTFLAGS $INCDIRS $LDDIRSOPT $LDFLAGS $PARSERINCDIRS main.cpp $PARSERLIBOPT && \
+INCDIRS="-Iinclude/ -I/usr/local/include/"                                       
+LDDIRSDEB="-L/usr/local/lib/ -L/usr/lib/x86_64-linux-gnu/";                                                  
+LDDIRSOPT="-L/usr/local/lib/ -L/usr/lib/x86_64-linux-gnu/";
+
+
+# https://stackoverflow.com/questions/5817269/does-the-order-of-l-and-l-options-in-the-gnu-linker-matter
+
+# clang++ $CXXFLAGS $INCDIRS $LDDIRSDEB $LDFLAGS $PARSERINCDIRS main.cpp $PARSERLIBDEB && \
+# echo "Clang done. Proceeding with GCC build." && \
+g++ $CXXFLAGS $OPTFLAGS $INCDIRS main.cpp $LDDIRSOPT $LDFLAGS $PARSERINCDIRS $PARSERLIBOPT && \
 echo "GCC done. Build succcessfully finished."
 

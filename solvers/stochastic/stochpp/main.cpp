@@ -13,7 +13,7 @@ namespace stoch {
 
 streams_t streams;
 size_t neval = 0;
-bool verbose_mode = false;
+bool verbose_mode = true;
 
 }
 
