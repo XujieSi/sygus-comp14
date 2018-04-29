@@ -39,9 +39,39 @@ map <tuple <vector <sort>, string>, dyn_expr> define_core()
     vector <sort> bb { sort_bool, sort_bool };
     vector <sort> bbb { sort_bool, sort_bool, sort_bool };
     bexpr_p bv0(new bvar(0)), bv1(new bvar(1)), bv2(new bvar(2));
+    
+    const int N = 128;
+    vector <bexpr_p> bv;
+    for (size_t i = 0; i < N; i++) {
+        //bv[i] = new bvar(i);
+        bv.push_back( std::unique_ptr<bvar>(new bvar(i)) );
+    }
 
-    macros[make_tuple(bb, string("and"))] = dyn_expr(sort_bool, bv0 && bv1);
-    macros[make_tuple(bb, string("or"))] = dyn_expr(sort_bool, bv0 || bv1);
+    // macros[make_tuple(bb, string("and"))] = dyn_expr(sort_bool, bv0 && bv1);
+    for (size_t i = 2; i < bv.size(); i++) {
+       auto ans = bv[0];
+       vector <sort> signature { sort_bool };
+       for (size_t j = 1; j < i; j++) {
+           ans = ans && bv[j];
+           signature.push_back(sort_bool);
+       }
+       macros[make_tuple(signature, string("and"))] = dyn_expr(sort_bool, ans);
+    }
+
+    // macros[make_tuple(bb, string("or"))] = dyn_expr(sort_bool, bv0 || bv1);
+    for (size_t i = 2; i < bv.size(); i++) {
+       auto ans = bv[0];
+       vector <sort> signature { sort_bool };
+       for (size_t j = 1; j < i; j++) {
+           ans = ans || bv[j];
+           signature.push_back(sort_bool);
+       }
+       macros[make_tuple(signature, string("or"))] = dyn_expr(sort_bool, ans);
+    }
+    
+    // macros[make_tuple(bb, string("and"))] = dyn_expr(sort_bool, bv0 && bv1);
+    // macros[make_tuple(bb, string("or"))] = dyn_expr(sort_bool, bv0 || bv1);
+
     macros[make_tuple(bb, string("=>"))] = dyn_expr(sort_bool, !bv0 || bv1);
     macros[make_tuple(b, string("not"))] = dyn_expr(sort_bool, !bv0);
 
